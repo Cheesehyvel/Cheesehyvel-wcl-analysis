@@ -49,25 +49,27 @@ class ResistanceAnalyzer:
                         if spell_id not in data["spells"]:
                             data["spells"][spell_id] = re["spells"][spell_id]
                         else:
-                            for index, dataset in enumerate(re["spells"][spell_id]["datasets"]):
-                                for key in dataset:
-                                    if key != "coe":
-                                        data["spells"][spell_id]["datasets"][index][key]+= dataset[key]
+                            for key in re["spells"][spell_id]["dataset"]:
+                                data["spells"][spell_id]["dataset"][key]+= re["spells"][spell_id]["dataset"][key]
 
-                    for index, dataset in enumerate(re["total"]):
-                        for key in dataset:
-                            if key != "coe":
-                                data["total"][index][key]+= dataset[key]
+                    for key in re["total"]:
+                        data["total"][key]+= re["total"][key]
 
         # Summarize
         if "total" in data:
             for spell_id in data["spells"]:
-                for dataset in data["spells"][spell_id]["datasets"]:
-                    dataset["mitigation"] = str(round(100 - 100*(dataset["75"] * 0.25 + dataset["50"] * 0.5 + dataset["25"] * 0.75 + dataset["0"])/dataset["count"], 2))+"%"
+                factor = 0
+                for key in data["spells"][spell_id]["dataset"]:
+                    if key != "count":
+                        factor+= (1.0 - float(key)/100) * data["spells"][spell_id]["dataset"][key]
+                data["spells"][spell_id]["dataset"]["mitigation"] = str(round(100 - 100*factor/data["spells"][spell_id]["dataset"]["count"], 2))
 
-            for dataset in data["total"]:
-                if dataset["count"] > 0:
-                    dataset["mitigation"] = str(round(100 - 100*(dataset["75"] * 0.25 + dataset["50"] * 0.5 + dataset["25"] * 0.75 + dataset["0"])/dataset["count"], 2))+"%"
+            if data["total"]["count"] > 0:
+                factor = 0
+                for key in data["total"]:
+                    if key != "count":
+                        factor+= (1.0 - float(key)/100) * data["total"][key]
+                data["total"]["mitigation"] = str(round(100 - 100*factor/data["total"]["count"], 2))
 
         if format == "csv":
             return self.toCsv(data)
@@ -77,37 +79,24 @@ class ResistanceAnalyzer:
     def analyzeReport(self, report, spellFilter):
         data = {
             "spells": {},
-            "total": [
-                {
-                    "coe": False,
-                    "count": 0,
-                    "0": 0,
-                    "25": 0,
-                    "50": 0,
-                    "75": 0
-                },
-                {
-                    "coe": True,
-                    "count": 0,
-                    "0": 0,
-                    "25": 0,
-                    "50": 0,
-                    "75": 0
-                }
-            ]
+            "total": {
+                "count": 0,
+                "0": 0,
+                "10": 0,
+                "20": 0,
+                "30": 0,
+                "40": 0,
+                "50": 0,
+                "60": 0,
+                "70": 0,
+                "80": 0,
+                "90": 0
+            }
         }
 
-        primarySpells = [27215, 32231, 27209, 27070, 30451, 27074]
-        coe_active = False
-        coe = 27228
+        primarySpells = [42897, 42845, 47610, 42833, 42842, 47809]
 
         for event in report["events"]["data"]:
-            if event["type"] == "applydebuff" and event["abilityGameID"] == coe:
-                coe_active = True
-
-            if event["type"] == "removedebuff" and event["abilityGameID"] == coe:
-                coe_active = False
-
             if (event["type"] == "damage" and
                 "tick" not in event and
                 "unmitigatedAmount" in event and
@@ -119,24 +108,19 @@ class ResistanceAnalyzer:
                 if event["abilityGameID"] not in data["spells"]:
                     data["spells"][event["abilityGameID"]] = {
                         "spellName": self.spellName(event["abilityGameID"]),
-                        "datasets": [
-                            {
-                                "coe": False,
-                                "count": 0,
-                                "0": 0,
-                                "25": 0,
-                                "50": 0,
-                                "75": 0
-                            },
-                            {
-                                "coe": True,
-                                "count": 0,
-                                "0": 0,
-                                "25": 0,
-                                "50": 0,
-                                "75": 0
-                            }
-                        ]
+                        "dataset": {
+                            "count": 0,
+                            "0": 0,
+                            "10": 0,
+                            "20": 0,
+                            "30": 0,
+                            "40": 0,
+                            "50": 0,
+                            "60": 0,
+                            "70": 0,
+                            "80": 0,
+                            "90": 0
+                        }
                     }
 
                 if "resisted" in event:
@@ -144,58 +128,41 @@ class ResistanceAnalyzer:
                 else:
                     key = "0"
 
-                coe_key = int(coe_active)
-                data["spells"][event["abilityGameID"]]["datasets"][coe_key]["count"]+= 1
-                data["spells"][event["abilityGameID"]]["datasets"][coe_key][key]+= 1
-                data["total"][coe_key]["count"]+= 1
-                data["total"][coe_key][key]+= 1
+                data["spells"][event["abilityGameID"]]["dataset"]["count"]+= 1
+                data["spells"][event["abilityGameID"]]["dataset"][key]+= 1
+                data["total"]["count"]+= 1
+                data["total"][key]+= 1
 
         return data
 
     def spellName(self, id):
         key = str(id)
         spells = {
-            "27215": "Immolate",
-            "32231": "Incinerate",
-            "27209": "Shadow Bolt",
-            "27285": "Seed of Corruption",
-            "30546": "Shadowburn",
-            "11763": "Firebolt",
-            "27072": "Frostbolt",
-            "27070": "Fireball",
-            "33938": "Pyroblast",
-            "30451": "Arcane Blast",
-            "27074": "Scorch",
-            "10207": "Scorch R7",
-            "27079": "Fire Blast",
-            "27087": "Cone of Cold",
-            "13021": "Blast Wave",
-            "30455": "Ice Lance",
-            "31707": "Waterbolt",
-            "33395": "Freeze",
-            "34913": "Molten Armor",
-            "27150": "Retribution Aura",
+            "42897": "Arcane Blast",
+            "42845": "Arcane Missiles",
+            "47610": "Frostfire Bolt",
+            "42833": "Fireball",
+            "42842": "Frostbolt",
+            "47809": "Shadow Bolt",
         }
         if key in spells:
             return spells[key]
         return "Unknown "+key;
 
     def toCsv(self, data, d = "\t"):
-        csv = "Spell"+d+"CoE"+d+"Hits"+d+"0%"+d+"25%"+d+"50%"+d+"75%"+d+"Mitigation\n"
+        csv = "Spell"+d+"Hits"+d+"0%"+d+"10%"+d+"20%"+d+"30%"+d+"40%"+d+"50%"+d+"60%"+d+"70%"+d+"80%"+d+"90%"+d+"Mitigation\n"
 
         if "total" in data:
             for spell_id in data["spells"]:
-                for dataset in data["spells"][spell_id]["datasets"]:
-                    csv+= str(data["spells"][spell_id]["spellName"])+d
-                    for key in dataset:
-                        csv+= str(dataset[key])+d
-                    csv = csv[0:-1]+"\n"
-
-            for dataset in data["total"]:
-                csv+= "Total"+d
-                for key in dataset:
-                    csv+= str(dataset[key])+d
+                csv+= str(data["spells"][spell_id]["spellName"])+d
+                for key in data["spells"][spell_id]["dataset"]:
+                    csv+= str(data["spells"][spell_id]["dataset"][key])+d
                 csv = csv[0:-1]+"\n"
+
+            csv+= "Total"+d
+            for key in data["total"]:
+                csv+= str(data["total"][key])+d
+            csv = csv[0:-1]+"\n"
 
         return csv
 
